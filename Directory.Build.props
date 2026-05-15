@@ -1,0 +1,34 @@
+<Project>
+
+  <PropertyGroup>
+	<LangVersion>preview</LangVersion>
+	<Nullable>enable</Nullable>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+	<Deterministic>true</Deterministic>
+	<ContinuousIntegrationBuild Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</ContinuousIntegrationBuild>
+
+	<!-- Common package metadata. Per-package overrides live in each csproj. -->
+	<Authors>YAYA-INK</Authors>
+	<Company>YAYA-INK</Company>
+	<Copyright>Copyright (c) 2025 YAYA-INK</Copyright>
+	<PackageLicenseExpression>MIT</PackageLicenseExpression>
+	<PackageProjectUrl>https://github.com/YAYA-INK/YayaInk.Orleans.Unions</PackageProjectUrl>
+	<RepositoryUrl>https://github.com/YAYA-INK/YayaInk.Orleans.Unions</RepositoryUrl>
+	<RepositoryType>git</RepositoryType>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<PackageTags>orleans;serialization;union;source-generator;csharp</PackageTags>
+	<PublishRepositoryUrl>true</PublishRepositoryUrl>
+	<EmbedUntrackedSources>true</EmbedUntrackedSources>
+	<IncludeSymbols>true</IncludeSymbols>
+	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+	<Version>0.1.0-preview.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(IsPackable)' == 'true' ">
+	<None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+	<None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

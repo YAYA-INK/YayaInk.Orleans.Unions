@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <IsPackable>false</IsPackable>
+
+    <!-- Generated .g.cs files are written to obj/<Cfg>/<Tfm>/generated/...
+         so the test project's structural assertions can read them. -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Orleans.Serialization" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Orleans.Serialization.Abstractions" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\YayaInk.Orleans.Unions\YayaInk.Orleans.Unions.csproj" />
+    <ProjectReference Include="..\..\src\YayaInk.Orleans.Unions.Generators\YayaInk.Orleans.Unions.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

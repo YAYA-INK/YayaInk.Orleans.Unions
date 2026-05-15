@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0;net11.0</TargetFrameworks>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <GenerateRequiresPreviewFeaturesAttribute>false</GenerateRequiresPreviewFeaturesAttribute>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>YayaInk.Orleans.Unions</PackageId>
+    <Description>Runtime marker attribute for YayaInk.Orleans.Unions. Pair with the YayaInk.Orleans.Unions.Generators source generator to add zero-boilerplate Microsoft Orleans serialization support for C# 15 union types.</Description>
+  </PropertyGroup>
+
+</Project>
