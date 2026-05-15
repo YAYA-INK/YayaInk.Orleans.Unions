@@ -40,7 +40,7 @@ using YayaInk.Orleans.Unions;
 
 [Union]
 [GenerateUnionSerializer]
-public partial union Result<T>(Ok<T>, Err);
+public union Result<T>(Ok<T>, Err);
 
 [GenerateSerializer] public sealed record Ok<T>([property: Id(0)] T Value);
 [GenerateSerializer] public sealed record Err([property: Id(0)] string Message);
