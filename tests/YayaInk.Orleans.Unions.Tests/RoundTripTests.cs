@@ -598,6 +598,150 @@ public class RoundTripTests
         Assert.Contains(names, n => n!.Contains("Result_") || n!.Contains("Result."));
         Assert.Contains(names, n => n!.Contains("ResultV2"));
         Assert.Contains(names, n => n!.Contains("Option"));
+        Assert.Contains(names, n => n!.Contains("Either"));
+        Assert.Contains(names, n => n!.Contains("Pair"));
+        Assert.Contains(names, n => n!.Contains("Triple"));
+        Assert.Contains(names, n => n!.Contains("ConstrainedEither"));
+    }
+
+    // ── Multi-generic-parameter unions ────────────────────────
+
+    // Scenario 1: 2-arity union, each case uses one parameter independently.
+    [Fact]
+    public void Either_IntString_Left_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int, string>(new Left<int>(7));
+        var copy = s.Deserialize<Either<int, string>>(s.SerializeToArray(original));
+        Assert.IsType<Left<int>>(copy.Value);
+        Assert.Equal(7, ((Left<int>)copy.Value!).Value);
+    }
+
+    [Fact]
+    public void Either_IntString_Right_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int, string>(new Right<string>("hello"));
+        var copy = s.Deserialize<Either<int, string>>(s.SerializeToArray(original));
+        Assert.IsType<Right<string>>(copy.Value);
+        Assert.Equal("hello", ((Right<string>)copy.Value!).Value);
+    }
+
+    // Scenario 6: value-type vs reference-type type arguments.
+    [Fact]
+    public void Either_RefRef_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<RefA, RefB>(new Right<RefB>(new RefB(7)));
+        var copy = s.Deserialize<Either<RefA, RefB>>(s.SerializeToArray(original));
+        Assert.IsType<Right<RefB>>(copy.Value);
+        Assert.Equal(7, ((Right<RefB>)copy.Value!).Value.Code);
+    }
+
+    // Scenario 5: same open generic union closed multiple ways in one
+    // serializer instance — manifest provider must resolve every closed form.
+    [Fact]
+    public void Either_MultipleClosedForms_Coexist()
+    {
+        var s = BuildSerializer();
+
+        var a = new Either<int, string>(new Left<int>(1));
+        var b = new Either<Guid, RefA>(new Right<RefA>(new RefA("zoe")));
+
+        var copyA = s.Deserialize<Either<int, string>>(s.SerializeToArray(a));
+        var copyB = s.Deserialize<Either<Guid, RefA>>(s.SerializeToArray(b));
+
+        Assert.Equal(1, ((Left<int>)copyA.Value!).Value);
+        Assert.Equal("zoe", ((Right<RefA>)copyB.Value!).Value.Name);
+    }
+
+    // Scenario 4: nested generic union inside another generic union.
+    [Fact]
+    public void Either_NestedEither_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var inner = new Either<string, double>(new Right<double>(3.14));
+        var original = new Either<int, Either<string, double>>(
+            new Right<Either<string, double>>(inner));
+        var copy = s.Deserialize<Either<int, Either<string, double>>>(
+            s.SerializeToArray(original));
+        var outerRight = Assert.IsType<Right<Either<string, double>>>(copy.Value);
+        var innerRight = Assert.IsType<Right<double>>(outerRight.Value.Value);
+        Assert.Equal(3.14, innerRight.Value);
+    }
+
+    // Scenario 2: 2-arity union, a single case uses both parameters at once.
+    [Fact]
+    public void Pair_Both_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Pair<int, string>(new Both<int, string>(7, "hi"));
+        var copy = s.Deserialize<Pair<int, string>>(s.SerializeToArray(original));
+        var both = Assert.IsType<Both<int, string>>(copy.Value);
+        Assert.Equal(7, both.First);
+        Assert.Equal("hi", both.Second);
+    }
+
+    [Fact]
+    public void Pair_Empty_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Pair<int, string>(new Empty());
+        var copy = s.Deserialize<Pair<int, string>>(s.SerializeToArray(original));
+        Assert.IsType<Empty>(copy.Value);
+    }
+
+    // Scenario 3: 3-arity union — each case targets a different parameter.
+    [Fact]
+    public void Triple_One_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Triple<int, string, Guid>(new One<int>(11));
+        var copy = s.Deserialize<Triple<int, string, Guid>>(s.SerializeToArray(original));
+        Assert.Equal(11, ((One<int>)copy.Value!).Value);
+    }
+
+    [Fact]
+    public void Triple_Two_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Triple<int, string, Guid>(new Two<string>("mid"));
+        var copy = s.Deserialize<Triple<int, string, Guid>>(s.SerializeToArray(original));
+        Assert.Equal("mid", ((Two<string>)copy.Value!).Value);
+    }
+
+    [Fact]
+    public void Triple_Three_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var id = Guid.NewGuid();
+        var original = new Triple<int, string, Guid>(new Three<Guid>(id));
+        var copy = s.Deserialize<Triple<int, string, Guid>>(s.SerializeToArray(original));
+        Assert.Equal(id, ((Three<Guid>)copy.Value!).Value);
+    }
+
+    [Fact]
+    public void Triple_DeepCopy_PreservesCase()
+    {
+        var services = new ServiceCollection();
+        services.AddSerializer(b => b.AddAssembly(typeof(IdUnion).Assembly));
+        var copier = services.BuildServiceProvider()
+            .GetRequiredService<DeepCopier<Triple<int, string, Guid>>>();
+
+        var original = new Triple<int, string, Guid>(new Two<string>("clone"));
+        var copy = copier.Copy(original);
+        Assert.Equal("clone", ((Two<string>)copy.Value!).Value);
+    }
+
+    // Scenario 7: generic constraints on the union itself must flow through
+    // to all generated codec / copier types without producing CS errors.
+    [Fact]
+    public void ConstrainedEither_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new ConstrainedEither<int, string>(new Right<string>("ok"));
+        var copy = s.Deserialize<ConstrainedEither<int, string>>(s.SerializeToArray(original));
+        Assert.Equal("ok", ((Right<string>)copy.Value!).Value);
     }
 
     private static string LocateGeneratedRoot()

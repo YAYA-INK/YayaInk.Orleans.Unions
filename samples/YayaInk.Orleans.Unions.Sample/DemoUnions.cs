@@ -96,3 +96,60 @@ public record struct ErrV2([property: global::Orleans.Id(0)] string Message);
 [Union]
 [GenerateUnionSerializer]
 public union ResultV2<T>(OkV2<T>, ErrV2) where T : struct;
+
+// ============================================================
+// Multi-generic-parameter unions.
+//
+// Validates that the generator correctly substitutes type arguments
+// when a union itself has more than one type parameter, including:
+//   - Either<TLeft,TRight>      cases each use one parameter
+//   - Pair<TA,TB>               a case uses both parameters
+//   - Triple<T1,T2,T3>          arity = 3
+//   - ConstrainedEither<TL,TR>  generic constraints flow through
+//   - Either<int, Either<...>>  closed-form recursion via manifest
+// ============================================================
+
+[global::Orleans.GenerateSerializer]
+public record struct Left<T>([property: global::Orleans.Id(0)] T Value);
+
+[global::Orleans.GenerateSerializer]
+public record struct Right<T>([property: global::Orleans.Id(0)] T Value);
+
+[Union]
+[GenerateUnionSerializer]
+public union Either<TLeft, TRight>(Left<TLeft>, Right<TRight>);
+
+[global::Orleans.GenerateSerializer]
+public record struct Both<TA, TB>(
+    [property: global::Orleans.Id(0)] TA First,
+    [property: global::Orleans.Id(1)] TB Second);
+
+[global::Orleans.GenerateSerializer]
+public record struct Empty();
+
+[Union]
+[GenerateUnionSerializer]
+public union Pair<TA, TB>(Both<TA, TB>, Empty);
+
+[global::Orleans.GenerateSerializer]
+public record struct One<T>([property: global::Orleans.Id(0)] T Value);
+
+[global::Orleans.GenerateSerializer]
+public record struct Two<T>([property: global::Orleans.Id(0)] T Value);
+
+[global::Orleans.GenerateSerializer]
+public record struct Three<T>([property: global::Orleans.Id(0)] T Value);
+
+[Union]
+[GenerateUnionSerializer]
+public union Triple<T1, T2, T3>(One<T1>, Two<T2>, Three<T3>);
+
+// Generic constraints must be propagated to the generated codec / copier
+// types; otherwise the generated code fails to compile when the constraint
+// is non-trivial. `notnull` is the lightest constraint that still forces
+// the generator to emit a constraint clause.
+[Union]
+[GenerateUnionSerializer]
+public union ConstrainedEither<TLeft, TRight>(Left<TLeft>, Right<TRight>)
+    where TLeft : notnull
+    where TRight : notnull;

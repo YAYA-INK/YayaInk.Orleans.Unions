@@ -36,6 +36,13 @@ public interface IUnionEchoGrain : IGrainWithStringKey
     Task<BatchEnvelope> EchoBatchAsync(BatchEnvelope value);
     Task<OuterEnvelope> EchoOuterAsync(OuterEnvelope value);
     Task<MultiUnionEnvelope> EchoMultiAsync(MultiUnionEnvelope value);
+
+    // Multi-generic-parameter unions.
+    Task<Either<int, string>> EchoEitherIntStringAsync(Either<int, string> value);
+    Task<Either<int, Either<string, double>>> EchoEitherNestedAsync(Either<int, Either<string, double>> value);
+    Task<Pair<int, string>> EchoPairIntStringAsync(Pair<int, string> value);
+    Task<Triple<int, string, System.Guid>> EchoTripleAsync(Triple<int, string, System.Guid> value);
+    Task<ConstrainedEither<int, string>> EchoConstrainedEitherAsync(ConstrainedEither<int, string> value);
 }
 
 public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
@@ -50,6 +57,12 @@ public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
     public Task<BatchEnvelope> EchoBatchAsync(BatchEnvelope value) => Task.FromResult(value);
     public Task<OuterEnvelope> EchoOuterAsync(OuterEnvelope value) => Task.FromResult(value);
     public Task<MultiUnionEnvelope> EchoMultiAsync(MultiUnionEnvelope value) => Task.FromResult(value);
+
+    public Task<Either<int, string>> EchoEitherIntStringAsync(Either<int, string> value) => Task.FromResult(value);
+    public Task<Either<int, Either<string, double>>> EchoEitherNestedAsync(Either<int, Either<string, double>> value) => Task.FromResult(value);
+    public Task<Pair<int, string>> EchoPairIntStringAsync(Pair<int, string> value) => Task.FromResult(value);
+    public Task<Triple<int, string, System.Guid>> EchoTripleAsync(Triple<int, string, System.Guid> value) => Task.FromResult(value);
+    public Task<ConstrainedEither<int, string>> EchoConstrainedEitherAsync(ConstrainedEither<int, string> value) => Task.FromResult(value);
 }
 
 file sealed class UnionSiloConfigurator : ISiloConfigurator
@@ -243,5 +256,77 @@ public class EndToEndClusterTests : IClassFixture<EndToEndClusterFixture>
         var done = Assert.IsType<Done>(result.Status.Value);
         Assert.Equal("ok", done.Result);
         Assert.Equal("tag-x", result.Tag);
+    }
+
+    // ── Multi-generic-parameter unions (cross-grain) ─────────────────
+
+    [Fact]
+    public async Task EitherIntString_Left_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherIntStringAsync(
+            new Either<int, string>(new Left<int>(7)));
+        Assert.Equal(7, ((Left<int>)result.Value!).Value);
+    }
+
+    [Fact]
+    public async Task EitherIntString_Right_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherIntStringAsync(
+            new Either<int, string>(new Right<string>("hi")));
+        Assert.Equal("hi", ((Right<string>)result.Value!).Value);
+    }
+
+    [Fact]
+    public async Task EitherNested_RoundTripsThroughCluster()
+    {
+        var inner = new Either<string, double>(new Right<double>(2.5));
+        var msg = new Either<int, Either<string, double>>(
+            new Right<Either<string, double>>(inner));
+        var result = await Grain().EchoEitherNestedAsync(msg);
+        var outerRight = Assert.IsType<Right<Either<string, double>>>(result.Value);
+        var innerRight = Assert.IsType<Right<double>>(outerRight.Value.Value);
+        Assert.Equal(2.5, innerRight.Value);
+    }
+
+    [Fact]
+    public async Task Pair_Both_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoPairIntStringAsync(
+            new Pair<int, string>(new Both<int, string>(42, "hello")));
+        var both = Assert.IsType<Both<int, string>>(result.Value);
+        Assert.Equal(42, both.First);
+        Assert.Equal("hello", both.Second);
+    }
+
+    [Fact]
+    public async Task Pair_Empty_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoPairIntStringAsync(
+            new Pair<int, string>(new Empty()));
+        Assert.IsType<Empty>(result.Value);
+    }
+
+    [Fact]
+    public async Task Triple_AllArmsRoundTripThroughCluster()
+    {
+        var grain = Grain();
+        var id = System.Guid.NewGuid();
+
+        var r1 = await grain.EchoTripleAsync(new Triple<int, string, System.Guid>(new One<int>(1)));
+        Assert.Equal(1, ((One<int>)r1.Value!).Value);
+
+        var r2 = await grain.EchoTripleAsync(new Triple<int, string, System.Guid>(new Two<string>("two")));
+        Assert.Equal("two", ((Two<string>)r2.Value!).Value);
+
+        var r3 = await grain.EchoTripleAsync(new Triple<int, string, System.Guid>(new Three<System.Guid>(id)));
+        Assert.Equal(id, ((Three<System.Guid>)r3.Value!).Value);
+    }
+
+    [Fact]
+    public async Task ConstrainedEither_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoConstrainedEitherAsync(
+            new ConstrainedEither<int, string>(new Left<int>(99)));
+        Assert.Equal(99, ((Left<int>)result.Value!).Value);
     }
 }
