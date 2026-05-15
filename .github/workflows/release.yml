@@ -44,12 +44,18 @@ jobs:
       - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          dotnet nuget push "artifacts/*.nupkg" `
-            --api-key $env:NUGET_API_KEY `
-            --source https://api.nuget.org/v3/index.json `
-            --skip-duplicate
         shell: pwsh
+        run: |
+          $packages = Get-ChildItem artifacts -Filter *.nupkg -File
+          if (-not $packages) { throw "No nupkg files found in artifacts/" }
+          foreach ($p in $packages) {
+            Write-Host "Pushing $($p.Name)"
+            dotnet nuget push $p.FullName `
+              --api-key $env:NUGET_API_KEY `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "Push failed for $($p.Name)" }
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
