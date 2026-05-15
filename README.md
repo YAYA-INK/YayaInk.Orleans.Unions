@@ -1,5 +1,10 @@
 # YayaInk.Orleans.Unions
 
+[![ci](https://github.com/YAYA-INK/YayaInk.Orleans.Unions/actions/workflows/ci.yml/badge.svg)](https://github.com/YAYA-INK/YayaInk.Orleans.Unions/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/vpre/YayaInk.Orleans.Unions.svg?label=YayaInk.Orleans.Unions)](https://www.nuget.org/packages/YayaInk.Orleans.Unions)
+[![NuGet](https://img.shields.io/nuget/vpre/YayaInk.Orleans.Unions.Generators.svg?label=YayaInk.Orleans.Unions.Generators)](https://www.nuget.org/packages/YayaInk.Orleans.Unions.Generators)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Zero-boilerplate [Microsoft Orleans](https://github.com/dotnet/orleans) serialization
 support for **C# 15 union types** (the `union` declaration introduced as a preview
 language feature).
