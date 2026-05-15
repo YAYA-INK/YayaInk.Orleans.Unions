@@ -64,6 +64,10 @@ jobs:
           path: artifacts/*.nupkg
 
       - name: Create GitHub Release
+        # Only create a GitHub Release when the workflow is triggered by a tag push.
+        # Manual workflow_dispatch runs (typically on `main`) have no tag and would
+        # otherwise fail this step with "GitHub Releases requires a tag".
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
