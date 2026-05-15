@@ -244,6 +244,12 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
           .AppendLine("        where TBufferWriter : global::System.Buffers.IBufferWriter<byte>")
           .AppendLine("    {")
           .AppendLine("        writer.WriteFieldHeader(fieldIdDelta, expectedType, _codecFieldType, global::Orleans.Serialization.WireProtocol.WireType.TagDelimited);")
+          // The reader side calls ReferenceCodec.MarkValueField(reader.Session) for this
+          // field so its per-session reference id counter advances. The writer side MUST
+          // mirror that, otherwise the two counters drift and any reference-typed payload
+          // that appears more than once in the same root graph (e.g. the same RefA shared
+          // across two list elements) deserializes as ReferenceNotFoundException.
+          .AppendLine("        global::Orleans.Serialization.Codecs.ReferenceCodec.MarkValueField(writer.Session);")
           .AppendLine("        var inner = ((global::System.Runtime.CompilerServices.IUnion)value).Value;")
           .AppendLine("        switch (inner)")
           .AppendLine("        {");

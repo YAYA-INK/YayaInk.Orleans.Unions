@@ -834,6 +834,140 @@ public class RoundTripTests
         Assert.Null(both.Second);
     }
 
+    // ── Nullable type-argument unions ────────────────────────────────
+    //
+    // These cover `Either<int?, string>` / `Either<string?, RefA?>` etc.
+    // The semantics under test are:
+    //   - The CLOSED generic form `Either<Nullable<int>, string>` must be
+    //     resolvable through the manifest provider (the generator emits
+    //     an open generic codec; Orleans constructs the closed one).
+    //   - A `Left<int?>(null)` payload must round-trip with HasValue=false,
+    //     not collapse to the entire union being default.
+    //   - For reference-type T, `Left<string?>(null)` must round-trip the
+    //     null payload while keeping the Left arm selected.
+
+    [Fact]
+    public void Either_NullableValue_LeftWithValue_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int?, string>(new Left<int?>(7));
+        var copy = s.Deserialize<Either<int?, string>>(s.SerializeToArray(original));
+        var left = Assert.IsType<Left<int?>>(copy.Value);
+        Assert.True(left.Value.HasValue);
+        Assert.Equal(7, left.Value!.Value);
+    }
+
+    [Fact]
+    public void Either_NullableValue_LeftWithNull_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int?, string>(new Left<int?>(null));
+        var copy = s.Deserialize<Either<int?, string>>(s.SerializeToArray(original));
+        var left = Assert.IsType<Left<int?>>(copy.Value);
+        Assert.False(left.Value.HasValue);
+    }
+
+    [Fact]
+    public void Either_NullableValue_RightStillSelectable_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int?, string>(new Right<string>("hi"));
+        var copy = s.Deserialize<Either<int?, string>>(s.SerializeToArray(original));
+        var right = Assert.IsType<Right<string>>(copy.Value);
+        Assert.Equal("hi", right.Value);
+    }
+
+    [Fact]
+    public void Pair_NullableValueBoth_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Pair<int?, int?>(new Both<int?, int?>(null, 5));
+        var copy = s.Deserialize<Pair<int?, int?>>(s.SerializeToArray(original));
+        var both = Assert.IsType<Both<int?, int?>>(copy.Value);
+        Assert.False(both.First.HasValue);
+        Assert.True(both.Second.HasValue);
+        Assert.Equal(5, both.Second!.Value);
+    }
+
+    [Fact]
+    public void Triple_NullableValueArm_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Triple<int?, string, System.Guid>(new One<int?>(null));
+        var copy = s.Deserialize<Triple<int?, string, System.Guid>>(s.SerializeToArray(original));
+        var one = Assert.IsType<One<int?>>(copy.Value);
+        Assert.False(one.Value.HasValue);
+    }
+
+    [Fact]
+    public void Either_NullableValueNested_RoundTrip()
+    {
+        // Nullable T flowing through a NESTED closed generic — exercises
+        // the manifest provider building Either<int, Either<int?, string>>.
+        var s = BuildSerializer();
+        var inner = new Either<int?, string>(new Left<int?>(null));
+        var original = new Either<int, Either<int?, string>>(
+            new Right<Either<int?, string>>(inner));
+        var copy = s.Deserialize<Either<int, Either<int?, string>>>(
+            s.SerializeToArray(original));
+        var outer = Assert.IsType<Right<Either<int?, string>>>(copy.Value);
+        var innerLeft = Assert.IsType<Left<int?>>(outer.Value.Value);
+        Assert.False(innerLeft.Value.HasValue);
+    }
+
+    // ── Potential real issue: reference identity through union dispatch ──
+    //
+    // Orleans enables reference tracking by default for reference-typed
+    // payloads. If a single RefA instance is referenced TWICE inside a
+    // List<RefUnion>, the deserialized list should also share the instance
+    // (ReferenceEquals == true). The risk: the generator's Serialize path
+    // dispatches via ((IUnion)value).Value and writes the case's IFieldCodec
+    // directly — if that bypasses the per-reference bookkeeping, the second
+    // occurrence would deserialize as a *new* RefA instance.
+    //
+    // This test pins the actual behavior so any future generator change
+    // that breaks identity preservation surfaces immediately.
+
+    [Fact]
+    public void RefUnion_SameInstanceUsedTwice_ReferenceIdentityPreserved()
+    {
+        var s = BuildSerializer();
+        var shared = new RefA("shared");
+        var list = new List<RefUnion>
+        {
+            new RefUnion(shared),
+            new RefUnion(shared),
+        };
+
+        var copy = s.Deserialize<List<RefUnion>>(s.SerializeToArray(list));
+        var a0 = Assert.IsType<RefA>(copy[0].Value);
+        var a1 = Assert.IsType<RefA>(copy[1].Value);
+        Assert.Equal("shared", a0.Name);
+        Assert.Equal("shared", a1.Name);
+
+        // Document & enforce reference identity behavior across the union path.
+        Assert.Same(a0, a1);
+    }
+
+    [Fact]
+    public void EitherIntRef_SameInstanceUsedTwice_ReferenceIdentityPreserved()
+    {
+        var s = BuildSerializer();
+        var shared = new RefA("shared");
+        var list = new List<Either<int, RefA>>
+        {
+            new Either<int, RefA>(new Right<RefA>(shared)),
+            new Either<int, RefA>(new Right<RefA>(shared)),
+        };
+
+        var copy = s.Deserialize<List<Either<int, RefA>>>(s.SerializeToArray(list));
+        var r0 = Assert.IsType<Right<RefA>>(copy[0].Value);
+        var r1 = Assert.IsType<Right<RefA>>(copy[1].Value);
+        Assert.NotNull(r0.Value);
+        Assert.NotNull(r1.Value);
+        Assert.Same(r0.Value, r1.Value);
+    }
+
     private static string LocateGeneratedRoot()
     {
         // Test dll lives at tests/YayaInk.Orleans.Unions.Tests/bin/<Cfg>/net11.0/.

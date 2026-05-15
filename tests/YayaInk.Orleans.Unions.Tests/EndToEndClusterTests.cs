@@ -50,6 +50,16 @@ public interface IUnionEchoGrain : IGrainWithStringKey
     Task<Pair<RefA, RefB>> EchoPairRefRefAsync(Pair<RefA, RefB> value);
     Task<Triple<RefA, RefB, string>> EchoTripleRefAsync(Triple<RefA, RefB, string> value);
     Task<Either<int, Either<string, RefA>>> EchoEitherNestedRefAsync(Either<int, Either<string, RefA>> value);
+
+    // Nullable type-argument unions (T itself declared as Nullable<T>).
+    Task<Either<int?, string>> EchoEitherNullableIntStringAsync(Either<int?, string> value);
+    Task<Pair<int?, int?>> EchoPairNullableBothAsync(Pair<int?, int?> value);
+    Task<Triple<int?, string, System.Guid>> EchoTripleNullableArmAsync(Triple<int?, string, System.Guid> value);
+    Task<Either<int, Either<int?, string>>> EchoEitherNestedNullableAsync(Either<int, Either<int?, string>> value);
+
+    // Reference-identity probe across the wire.
+    Task<List<RefUnion>> EchoRefUnionListAsync(List<RefUnion> value);
+    Task<List<Either<int, RefA>>> EchoEitherIntRefListAsync(List<Either<int, RefA>> value);
 }
 
 public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
@@ -76,6 +86,14 @@ public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
     public Task<Pair<RefA, RefB>> EchoPairRefRefAsync(Pair<RefA, RefB> value) => Task.FromResult(value);
     public Task<Triple<RefA, RefB, string>> EchoTripleRefAsync(Triple<RefA, RefB, string> value) => Task.FromResult(value);
     public Task<Either<int, Either<string, RefA>>> EchoEitherNestedRefAsync(Either<int, Either<string, RefA>> value) => Task.FromResult(value);
+
+    public Task<Either<int?, string>> EchoEitherNullableIntStringAsync(Either<int?, string> value) => Task.FromResult(value);
+    public Task<Pair<int?, int?>> EchoPairNullableBothAsync(Pair<int?, int?> value) => Task.FromResult(value);
+    public Task<Triple<int?, string, System.Guid>> EchoTripleNullableArmAsync(Triple<int?, string, System.Guid> value) => Task.FromResult(value);
+    public Task<Either<int, Either<int?, string>>> EchoEitherNestedNullableAsync(Either<int, Either<int?, string>> value) => Task.FromResult(value);
+
+    public Task<List<RefUnion>> EchoRefUnionListAsync(List<RefUnion> value) => Task.FromResult(value);
+    public Task<List<Either<int, RefA>>> EchoEitherIntRefListAsync(List<Either<int, RefA>> value) => Task.FromResult(value);
 }
 
 file sealed class UnionSiloConfigurator : ISiloConfigurator
@@ -403,5 +421,115 @@ public class EndToEndClusterTests : IClassFixture<EndToEndClusterFixture>
         var outerRight = Assert.IsType<Right<Either<string, RefA>>>(result.Value);
         var innerRight = Assert.IsType<Right<RefA>>(outerRight.Value.Value);
         Assert.Null(innerRight.Value);
+    }
+
+    // ── Nullable type-argument unions over the wire ──────────────────
+    //
+    // These are the cross-grain twins of the in-process nullable tests.
+    // The added value here is verifying that Orleans' manifest provider
+    // resolves the closed forms (e.g. Either<Nullable<int>, string>) when
+    // the codec is constructed lazily inside a real silo, not just when
+    // pre-warmed by an in-process Serializer.
+
+    [Fact]
+    public async Task EitherNullableIntString_LeftWithValue_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherNullableIntStringAsync(
+            new Either<int?, string>(new Left<int?>(7)));
+        var left = Assert.IsType<Left<int?>>(result.Value);
+        Assert.True(left.Value.HasValue);
+        Assert.Equal(7, left.Value!.Value);
+    }
+
+    [Fact]
+    public async Task EitherNullableIntString_LeftWithNull_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherNullableIntStringAsync(
+            new Either<int?, string>(new Left<int?>(null)));
+        var left = Assert.IsType<Left<int?>>(result.Value);
+        Assert.False(left.Value.HasValue);
+    }
+
+    [Fact]
+    public async Task EitherNullableIntString_RightSelectable_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherNullableIntStringAsync(
+            new Either<int?, string>(new Right<string>("hi")));
+        var right = Assert.IsType<Right<string>>(result.Value);
+        Assert.Equal("hi", right.Value);
+    }
+
+    [Fact]
+    public async Task PairNullableBoth_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoPairNullableBothAsync(
+            new Pair<int?, int?>(new Both<int?, int?>(null, 5)));
+        var both = Assert.IsType<Both<int?, int?>>(result.Value);
+        Assert.False(both.First.HasValue);
+        Assert.True(both.Second.HasValue);
+        Assert.Equal(5, both.Second!.Value);
+    }
+
+    [Fact]
+    public async Task TripleNullableArm_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoTripleNullableArmAsync(
+            new Triple<int?, string, System.Guid>(new One<int?>(null)));
+        var one = Assert.IsType<One<int?>>(result.Value);
+        Assert.False(one.Value.HasValue);
+    }
+
+    [Fact]
+    public async Task EitherNestedNullable_RoundTripsThroughCluster()
+    {
+        var inner = new Either<int?, string>(new Left<int?>(null));
+        var msg = new Either<int, Either<int?, string>>(
+            new Right<Either<int?, string>>(inner));
+        var result = await Grain().EchoEitherNestedNullableAsync(msg);
+        var outer = Assert.IsType<Right<Either<int?, string>>>(result.Value);
+        var innerLeft = Assert.IsType<Left<int?>>(outer.Value.Value);
+        Assert.False(innerLeft.Value.HasValue);
+    }
+
+    // ── Reference identity through the union dispatch (cross-grain) ──
+    //
+    // POTENTIAL REAL ISSUE under test: with Orleans' default reference
+    // tracking, sharing one RefA instance twice inside a List<RefUnion>
+    // should round-trip as a single shared instance. The generated union
+    // codec writes the case payload via its own IFieldCodec, and the risk
+    // is that the dispatch path bypasses the per-call reference table.
+    // If that ever regresses, this assertion will catch it on the real
+    // Client -> Silo -> Client serialization path (not just in-process).
+
+    [Fact]
+    public async Task RefUnionList_SharedInstance_PreservesIdentityCrossGrain()
+    {
+        var shared = new RefA("shared");
+        var list = new List<RefUnion>
+        {
+            new RefUnion(shared),
+            new RefUnion(shared),
+        };
+        var result = await Grain().EchoRefUnionListAsync(list);
+        var a0 = Assert.IsType<RefA>(result[0].Value);
+        var a1 = Assert.IsType<RefA>(result[1].Value);
+        Assert.Equal("shared", a0.Name);
+        Assert.Same(a0, a1);
+    }
+
+    [Fact]
+    public async Task EitherIntRefList_SharedInstance_PreservesIdentityCrossGrain()
+    {
+        var shared = new RefA("shared");
+        var list = new List<Either<int, RefA>>
+        {
+            new Either<int, RefA>(new Right<RefA>(shared)),
+            new Either<int, RefA>(new Right<RefA>(shared)),
+        };
+        var result = await Grain().EchoEitherIntRefListAsync(list);
+        var r0 = Assert.IsType<Right<RefA>>(result[0].Value);
+        var r1 = Assert.IsType<Right<RefA>>(result[1].Value);
+        Assert.NotNull(r0.Value);
+        Assert.Same(r0.Value, r1.Value);
     }
 }
