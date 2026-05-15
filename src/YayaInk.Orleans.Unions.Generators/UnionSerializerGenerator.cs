@@ -20,6 +20,23 @@ namespace YayaInk.Orleans.Unions.Generators;
 /// arity; the manifest registers the open generic so Orleans constructs the closed
 /// instance on demand. Nested unions (a union as a case payload) are supported because
 /// the generated codec only needs <c>IFieldCodec&lt;TCase&gt;</c> for each case type.
+///
+/// <para>
+/// <b>Compiler-shape note (no-box / TryGetValue path).</b>
+/// The C# 15 union spec describes two compiler-emitted layouts:
+/// (a) the default boxed form — a single <c>object Value</c> field; and
+/// (b) a no-box form for <c>where T : struct</c>-constrained, all-value-case unions —
+/// adding <c>byte _tag</c> + per-case typed fields and overloaded
+/// <c>bool TryGetValue&lt;T&gt;(out T)</c> methods that allow zero-box pattern matching.
+/// As of the Roslyn preview validated here (VS 2026 18.7.0-insiders / .NET 11 preview),
+/// <i>every</i> compiled union — including <c>ResultV2&lt;T&gt; where T : struct</c> —
+/// is emitted in form (a); form (b) has not yet shipped. Therefore this generator
+/// always dispatches via <c>((IUnion)value).Value</c>, which is correct for both
+/// forms and incurs no <i>extra</i> boxing on top of what the union constructor
+/// already did. A reflection-based probe test
+/// (<c>CompilerShapeProbeTests</c>) will start failing once form (b) lands; that is
+/// the signal to extend this generator with a <c>TryGetValue</c> fast path.
+/// </para>
 /// </summary>
 [Generator]
 public sealed class UnionSerializerGenerator : IIncrementalGenerator

@@ -67,6 +67,31 @@ Validated by the test suite:
 - Unions embedded in records, lists, dictionaries, and other Orleans messages
 - `default` / null `IUnion.Value` preservation
 
+## Performance notes
+
+The C# 15 spec describes two compiler-emitted union layouts:
+
+- **Boxed form** — a single `object Value` field. Used for any union that has at
+  least one reference-type case, or whose value-case payload would still need
+  type erasure.
+- **No-box form** — a `byte _tag` plus per-case typed fields and overloaded
+  `bool TryGetValue<T>(out T)` methods. The spec reserves this for unions whose
+  cases are all value types, typically with a `where T : struct` constraint.
+
+As of the Roslyn preview validated here (VS 2026 18.7.0-insiders / .NET 11
+preview), **every** compiled union — including
+`ResultV2<T> where T : struct` — is emitted in the boxed form. The no-box form
+has not shipped yet. Consequently:
+
+- The generator dispatches via `((IUnion)value).Value`, which is correct for
+  both forms.
+- For value-case unions, the only boxing happens inside the union's own
+  constructor (`new MyUnion(structValue)`); the serializer does **not** add
+  boxing on top of that.
+- A reflection probe (`CompilerShapeProbeTests`) pins this observation. Once
+  the no-box form lands, those tests will fail and the generator will be
+  extended with a `TryGetValue` fast path.
+
 ## Limitations
 
 - The C# `union` keyword is a **preview** language feature; you must enable
