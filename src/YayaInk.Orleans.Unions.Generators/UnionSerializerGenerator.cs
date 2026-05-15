@@ -22,20 +22,21 @@ namespace YayaInk.Orleans.Unions.Generators;
 /// the generated codec only needs <c>IFieldCodec&lt;TCase&gt;</c> for each case type.
 ///
 /// <para>
-/// <b>Compiler-shape note (no-box / TryGetValue path).</b>
-/// The C# 15 union spec describes two compiler-emitted layouts:
-/// (a) the default boxed form — a single <c>object Value</c> field; and
-/// (b) a no-box form for <c>where T : struct</c>-constrained, all-value-case unions —
-/// adding <c>byte _tag</c> + per-case typed fields and overloaded
-/// <c>bool TryGetValue&lt;T&gt;(out T)</c> methods that allow zero-box pattern matching.
-/// As of the Roslyn preview validated here (VS 2026 18.7.0-insiders / .NET 11 preview),
-/// <i>every</i> compiled union — including <c>ResultV2&lt;T&gt; where T : struct</c> —
-/// is emitted in form (a); form (b) has not yet shipped. Therefore this generator
-/// always dispatches via <c>((IUnion)value).Value</c>, which is correct for both
-/// forms and incurs no <i>extra</i> boxing on top of what the union constructor
-/// already did. A reflection-based probe test
-/// (<c>CompilerShapeProbeTests</c>) will start failing once form (b) lands; that is
-/// the signal to extend this generator with a <c>TryGetValue</c> fast path.
+/// <b>Compiler-shape note.</b>
+/// Per the C# 15 spec, the <c>union</c> keyword always lowers to a struct
+/// wrapper with a single <c>object? Value</c> field, regardless of the case
+/// types or generic constraints. <c>where T : struct</c> does <i>not</i>
+/// switch the lowering to a tagged / typed-fields layout — that non-boxing
+/// form is an opt-in pattern (<c>HasValue</c> + <c>bool TryGetValue(out T)</c>
+/// overloads) reserved for <i>hand-written</i> <c>[Union] struct</c> types,
+/// not something the compiler ever auto-emits for a <c>union</c> declaration.
+/// This generator therefore dispatches via <c>((IUnion)value).Value</c>,
+/// which matches the only shape <c>union</c> declarations produce. The only
+/// boxing on the value-case path is the one the union's own constructor
+/// performs; the serializer adds none on top of that.
+/// <c>CompilerShapeProbeTests</c> pins this lowering as a stability guard:
+/// if Roslyn ever changes the lowering of <c>union</c> declarations, that
+/// probe trips and the dispatch model here needs to be revisited.
 /// </para>
 /// </summary>
 [Generator]

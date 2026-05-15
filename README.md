@@ -69,28 +69,33 @@ Validated by the test suite:
 
 ## Performance notes
 
-The C# 15 spec describes two compiler-emitted union layouts:
+The `union` keyword always lowers to a struct wrapper containing a single
+`object? Value` field, regardless of the case types or generic constraints.
+That is the spec's design, not a temporary state — `where T : struct` does
+**not** trigger a different layout, and there is no compiler switch that
+makes `union Foo(...)` emit the unboxed `byte _tag` + per-case typed fields
+shape on its own.
 
-- **Boxed form** — a single `object Value` field. Used for any union that has at
-  least one reference-type case, or whose value-case payload would still need
-  type erasure.
-- **No-box form** — a `byte _tag` plus per-case typed fields and overloaded
-  `bool TryGetValue<T>(out T)` methods. The spec reserves this for unions whose
-  cases are all value types, typically with a `where T : struct` constraint.
+What that means for this package:
 
-As of the Roslyn preview validated here (VS 2026 18.7.0-insiders / .NET 11
-preview), **every** compiled union — including
-`ResultV2<T> where T : struct` — is emitted in the boxed form. The no-box form
-has not shipped yet. Consequently:
-
-- The generator dispatches via `((IUnion)value).Value`, which is correct for
-  both forms.
-- For value-case unions, the only boxing happens inside the union's own
+- The generator dispatches via `((IUnion)value).Value`, which is the only
+  shape the compiler produces for `union` declarations.
+- For value-type cases, the boxing happens inside the union's own
   constructor (`new MyUnion(structValue)`); the serializer does **not** add
-  boxing on top of that.
-- A reflection probe (`CompilerShapeProbeTests`) pins this observation. Once
-  the no-box form lands, those tests will fail and the generator will be
-  extended with a `TryGetValue` fast path.
+  another layer of boxing on top of that.
+- `CompilerShapeProbeTests` simply pins this lowering as a regression
+  guard; it is not a "waiting for the no-box form to land" probe.
+
+The C# 15 spec **does** define a non-boxing access pattern, but only for
+**hand-written `[Union] struct`** types that opt in by implementing
+`HasValue` plus one or more `bool TryGetValue(out T)` overloads (see the
+"Non-boxing access pattern" section of the spec). The compiler then routes
+pattern matching through those typed accessors instead of `Value`.
+
+This package currently targets the `union` keyword path only. Adding
+generator support for hand-written `[Union] struct`s with `TryGetValue`
+overloads is a possible future enhancement and is independent of any
+compiler change.
 
 ## Limitations
 

@@ -5,18 +5,23 @@ using YayaInk.Orleans.Unions.Sample;
 namespace YayaInk.Orleans.Unions.Tests;
 
 /// <summary>
-/// Detects which compiler-emitted shape the current Roslyn version uses for
-/// <c>union</c> types. Today (VS 2026 18.7.0-insiders / .NET 11 preview) every
-/// union — including <c>ResultV2&lt;T&gt; where T : struct</c> — is emitted in
-/// the boxed single-<c>object Value</c> form. The no-box form described in the
-/// C# 15 spec (a <c>byte _tag</c> + per-case typed fields + overloaded
-/// <c>bool TryGetValue(out T)</c> methods) has not shipped yet.
+/// Pins the compiler-emitted shape of <c>union</c> declarations so a future
+/// Roslyn change cannot silently invalidate the generator's dispatch model.
 ///
 /// <para>
-/// These tests pin that observation. If the no-box form ever lands, the asserts
-/// below will start failing — that is the signal to extend
-/// <c>UnionSerializerGenerator</c> with a <c>TryGetValue</c>-based fast path so
-/// value-case dispatch can avoid the boxing performed inside the union itself.
+/// Per the C# 15 spec, the <c>union</c> keyword always lowers to a struct
+/// wrapper with a single <c>object? Value</c> field, regardless of the case
+/// types or generic constraints. The non-boxing access pattern (<c>HasValue</c>
+/// + <c>bool TryGetValue(out T)</c> overloads) is an opt-in pattern for
+/// <em>hand-written</em> <c>[Union] struct</c> types — it is not something
+/// the compiler ever auto-generates for a <c>union</c> declaration, not even
+/// for <c>union ... where T : struct</c>.
+/// </para>
+///
+/// <para>
+/// These tests therefore exist as stability guards: if Roslyn ever changes
+/// the lowering of <c>union</c> declarations, the generator's
+/// <c>((IUnion)value).Value</c> dispatch needs to be revisited.
 /// </para>
 /// </summary>
 public class CompilerShapeProbeTests
@@ -33,16 +38,17 @@ public class CompilerShapeProbeTests
     [InlineData(typeof(Pair<int, string>))]
     [InlineData(typeof(Triple<int, string, double>))]
     [InlineData(typeof(ConstrainedEither<int, string>))]
-    public void Union_StillUsesBoxedSingleObjectFormToday(System.Type unionType)
+    public void UnionKeyword_LowersToSingleObjectValueField(System.Type unionType)
     {
-        // Every compiler-emitted union today has exactly one instance field —
-        // the auto-property backing field for `object Value`.
+        // Every `union`-declared type has exactly one instance field — the
+        // auto-property backing field for `object Value`.
         var instanceFields = unionType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         Assert.Single(instanceFields);
         Assert.Equal(typeof(object), instanceFields[0].FieldType);
 
-        // And there is no `TryGetValue(out T)` fast-path overload yet.
+        // The non-boxing access pattern is opt-in for hand-written [Union]
+        // structs only; the `union` keyword never emits TryGetValue.
         var tryGet = unionType
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(m => m.Name == "TryGetValue")
@@ -52,11 +58,13 @@ public class CompilerShapeProbeTests
     }
 
     [Fact]
-    public void NoBoxFormHasNotLanded_ForAllStructCaseUnion()
+    public void UnionKeyword_DoesNotEmitTagOrTryGetValue_EvenForAllStructCases()
     {
-        // ResultV2<T> where T : struct is the spec's canonical "should be no-box"
-        // example. The day this assertion flips, revisit UnionSerializerGenerator
-        // and emit a TryGetValue<T>(out T) dispatch chain for such unions.
+        // ResultV2<T> where T : struct is the canonical "all value-type cases"
+        // example. Per the spec the `union` keyword still lowers to the
+        // single-object-Value form here. If this assertion ever flips it means
+        // Roslyn changed the lowering of `union` declarations themselves, in
+        // which case UnionSerializerGenerator's dispatch needs to be revisited.
         var t = typeof(ResultV2<int>);
 
         var hasTag = t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
@@ -65,8 +73,8 @@ public class CompilerShapeProbeTests
                               .Any(m => m.Name == "TryGetValue");
 
         Assert.False(hasTag,
-            "Compiler started emitting a tag field — extend UnionSerializerGenerator with a TryGetValue fast path.");
+            "`union` keyword started emitting a tag field — revisit UnionSerializerGenerator's dispatch model.");
         Assert.False(hasTryGetValue,
-            "Compiler started emitting TryGetValue overloads — extend UnionSerializerGenerator with a TryGetValue fast path.");
+            "`union` keyword started emitting TryGetValue overloads — revisit UnionSerializerGenerator's dispatch model.");
     }
 }
