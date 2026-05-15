@@ -744,6 +744,96 @@ public class RoundTripTests
         Assert.Equal("ok", ((Right<string>)copy.Value!).Value);
     }
 
+    // ── Null reference-type payload edges (multi-generic) ─────
+    //
+    // Distinct from `Default_Union_PreservesNullValue`: here `IUnion.Value`
+    // is a real case instance, but a reference-type field *inside* the case
+    // is null. The codec must serialize/deserialize that null without
+    // collapsing the whole union to default and without throwing NRE.
+
+    [Fact]
+    public void Either_RightRef_NullPayloadField_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<int, RefA>(new Right<RefA>(null!));
+        var copy = s.Deserialize<Either<int, RefA>>(s.SerializeToArray(original));
+        var right = Assert.IsType<Right<RefA>>(copy.Value);
+        Assert.Null(right.Value);
+    }
+
+    [Fact]
+    public void Either_LeftRef_NullPayloadField_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Either<RefA, RefB>(new Left<RefA>(null!));
+        var copy = s.Deserialize<Either<RefA, RefB>>(s.SerializeToArray(original));
+        var left = Assert.IsType<Left<RefA>>(copy.Value);
+        Assert.Null(left.Value);
+    }
+
+    [Fact]
+    public void Pair_BothRef_BothFieldsNull_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Pair<RefA, RefB>(new Both<RefA, RefB>(null!, null!));
+        var copy = s.Deserialize<Pair<RefA, RefB>>(s.SerializeToArray(original));
+        var both = Assert.IsType<Both<RefA, RefB>>(copy.Value);
+        Assert.Null(both.First);
+        Assert.Null(both.Second);
+    }
+
+    [Fact]
+    public void Pair_BothRef_PartialNull_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Pair<RefA, RefB>(
+            new Both<RefA, RefB>(new RefA("only-left"), null!));
+        var copy = s.Deserialize<Pair<RefA, RefB>>(s.SerializeToArray(original));
+        var both = Assert.IsType<Both<RefA, RefB>>(copy.Value);
+        Assert.NotNull(both.First);
+        Assert.Equal("only-left", both.First!.Name);
+        Assert.Null(both.Second);
+    }
+
+    [Fact]
+    public void Triple_RefArm_NullPayloadField_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new Triple<RefA, RefB, string>(new Two<RefB>(null!));
+        var copy = s.Deserialize<Triple<RefA, RefB, string>>(s.SerializeToArray(original));
+        var two = Assert.IsType<Two<RefB>>(copy.Value);
+        Assert.Null(two.Value);
+    }
+
+    [Fact]
+    public void Either_Nested_InnermostRefIsNull_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var inner = new Either<string, RefA>(new Right<RefA>(null!));
+        var original = new Either<int, Either<string, RefA>>(
+            new Right<Either<string, RefA>>(inner));
+        var copy = s.Deserialize<Either<int, Either<string, RefA>>>(
+            s.SerializeToArray(original));
+        var outerRight = Assert.IsType<Right<Either<string, RefA>>>(copy.Value);
+        var innerRight = Assert.IsType<Right<RefA>>(outerRight.Value.Value);
+        Assert.Null(innerRight.Value);
+    }
+
+    [Fact]
+    public void Pair_BothFieldsNull_DeepCopy_PreservesNulls()
+    {
+        var services = new ServiceCollection();
+        services.AddSerializer(b => b.AddAssembly(typeof(IdUnion).Assembly));
+        var copier = services.BuildServiceProvider()
+            .GetRequiredService<DeepCopier<Pair<RefA, RefB>>>();
+
+        var original = new Pair<RefA, RefB>(new Both<RefA, RefB>(null!, null!));
+        var copy = copier.Copy(original);
+        var both = Assert.IsType<Both<RefA, RefB>>(copy.Value);
+        Assert.Null(both.First);
+        Assert.Null(both.Second);
+    }
+
     private static string LocateGeneratedRoot()
     {
         // Test dll lives at tests/YayaInk.Orleans.Unions.Tests/bin/<Cfg>/net11.0/.

@@ -43,6 +43,13 @@ public interface IUnionEchoGrain : IGrainWithStringKey
     Task<Pair<int, string>> EchoPairIntStringAsync(Pair<int, string> value);
     Task<Triple<int, string, System.Guid>> EchoTripleAsync(Triple<int, string, System.Guid> value);
     Task<ConstrainedEither<int, string>> EchoConstrainedEitherAsync(ConstrainedEither<int, string> value);
+
+    // Reference-type case payloads: exercises null-field edges over the wire.
+    Task<Either<int, RefA>> EchoEitherIntRefAsync(Either<int, RefA> value);
+    Task<Either<RefA, RefB>> EchoEitherRefRefAsync(Either<RefA, RefB> value);
+    Task<Pair<RefA, RefB>> EchoPairRefRefAsync(Pair<RefA, RefB> value);
+    Task<Triple<RefA, RefB, string>> EchoTripleRefAsync(Triple<RefA, RefB, string> value);
+    Task<Either<int, Either<string, RefA>>> EchoEitherNestedRefAsync(Either<int, Either<string, RefA>> value);
 }
 
 public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
@@ -63,6 +70,12 @@ public sealed class UnionEchoGrain : Grain, IUnionEchoGrain
     public Task<Pair<int, string>> EchoPairIntStringAsync(Pair<int, string> value) => Task.FromResult(value);
     public Task<Triple<int, string, System.Guid>> EchoTripleAsync(Triple<int, string, System.Guid> value) => Task.FromResult(value);
     public Task<ConstrainedEither<int, string>> EchoConstrainedEitherAsync(ConstrainedEither<int, string> value) => Task.FromResult(value);
+
+    public Task<Either<int, RefA>> EchoEitherIntRefAsync(Either<int, RefA> value) => Task.FromResult(value);
+    public Task<Either<RefA, RefB>> EchoEitherRefRefAsync(Either<RefA, RefB> value) => Task.FromResult(value);
+    public Task<Pair<RefA, RefB>> EchoPairRefRefAsync(Pair<RefA, RefB> value) => Task.FromResult(value);
+    public Task<Triple<RefA, RefB, string>> EchoTripleRefAsync(Triple<RefA, RefB, string> value) => Task.FromResult(value);
+    public Task<Either<int, Either<string, RefA>>> EchoEitherNestedRefAsync(Either<int, Either<string, RefA>> value) => Task.FromResult(value);
 }
 
 file sealed class UnionSiloConfigurator : ISiloConfigurator
@@ -328,5 +341,67 @@ public class EndToEndClusterTests : IClassFixture<EndToEndClusterFixture>
         var result = await Grain().EchoConstrainedEitherAsync(
             new ConstrainedEither<int, string>(new Left<int>(99)));
         Assert.Equal(99, ((Left<int>)result.Value!).Value);
+    }
+
+    // ── Null reference-type payload edges over the wire ──────────────
+
+    [Fact]
+    public async Task EitherIntRef_NullPayload_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherIntRefAsync(
+            new Either<int, RefA>(new Right<RefA>(null!)));
+        var right = Assert.IsType<Right<RefA>>(result.Value);
+        Assert.Null(right.Value);
+    }
+
+    [Fact]
+    public async Task EitherRefRef_LeftNullPayload_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoEitherRefRefAsync(
+            new Either<RefA, RefB>(new Left<RefA>(null!)));
+        var left = Assert.IsType<Left<RefA>>(result.Value);
+        Assert.Null(left.Value);
+    }
+
+    [Fact]
+    public async Task PairRefRef_BothFieldsNull_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoPairRefRefAsync(
+            new Pair<RefA, RefB>(new Both<RefA, RefB>(null!, null!)));
+        var both = Assert.IsType<Both<RefA, RefB>>(result.Value);
+        Assert.Null(both.First);
+        Assert.Null(both.Second);
+    }
+
+    [Fact]
+    public async Task PairRefRef_PartialNull_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoPairRefRefAsync(
+            new Pair<RefA, RefB>(new Both<RefA, RefB>(new RefA("only-left"), null!)));
+        var both = Assert.IsType<Both<RefA, RefB>>(result.Value);
+        Assert.NotNull(both.First);
+        Assert.Equal("only-left", both.First!.Name);
+        Assert.Null(both.Second);
+    }
+
+    [Fact]
+    public async Task TripleRef_NullPayload_RoundTripsThroughCluster()
+    {
+        var result = await Grain().EchoTripleRefAsync(
+            new Triple<RefA, RefB, string>(new Two<RefB>(null!)));
+        var two = Assert.IsType<Two<RefB>>(result.Value);
+        Assert.Null(two.Value);
+    }
+
+    [Fact]
+    public async Task EitherNestedRef_InnermostNull_RoundTripsThroughCluster()
+    {
+        var inner = new Either<string, RefA>(new Right<RefA>(null!));
+        var msg = new Either<int, Either<string, RefA>>(
+            new Right<Either<string, RefA>>(inner));
+        var result = await Grain().EchoEitherNestedRefAsync(msg);
+        var outerRight = Assert.IsType<Right<Either<string, RefA>>>(result.Value);
+        var innerRight = Assert.IsType<Right<RefA>>(outerRight.Value.Value);
+        Assert.Null(innerRight.Value);
     }
 }
