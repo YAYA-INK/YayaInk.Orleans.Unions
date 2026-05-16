@@ -602,6 +602,7 @@ public class RoundTripTests
         Assert.Contains(names, n => n!.Contains("Pair"));
         Assert.Contains(names, n => n!.Contains("Triple"));
         Assert.Contains(names, n => n!.Contains("ConstrainedEither"));
+        Assert.Contains(names, n => n!.Contains("ComplexPayloadUnion"));
     }
 
     // ── Multi-generic-parameter unions ────────────────────────
@@ -967,6 +968,176 @@ public class RoundTripTests
         Assert.NotNull(r1.Value);
         Assert.Same(r0.Value, r1.Value);
     }
+
+    // ── Complex nested payload regression ─────────────────────
+    //
+    // A generated union codec must keep Orleans' reference-id session in
+    // perfect sync with the payload codec. These cases mirror the shape
+    // that failed when the reader marked the union value field but the
+    // writer did not: nested records, dictionaries, lists, nullable
+    // diagnostics, enum fields, and generic result wrappers.
+
+    [Theory]
+    [MemberData(nameof(ComplexPayloadCases))]
+    public void ComplexPayloadUnion_NestedPayload_RoundTrip(ComplexPayloadUnion original)
+    {
+        var s = BuildSerializer();
+        var copy = s.Deserialize<ComplexPayloadUnion>(s.SerializeToArray(original));
+        Assert.Equal(ComplexPayloadFingerprint(original), ComplexPayloadFingerprint(copy));
+    }
+
+    [Theory]
+    [MemberData(nameof(ComplexPayloadCases))]
+    public void ComplexPayloadUnion_NestedPayload_DeepCopy_ReturnsEquivalent(ComplexPayloadUnion original)
+    {
+        var services = new ServiceCollection();
+        services.AddSerializer(b => b.AddAssembly(typeof(IdUnion).Assembly));
+        var copier = services.BuildServiceProvider()
+            .GetRequiredService<DeepCopier<ComplexPayloadUnion>>();
+
+        var copy = copier.Copy(original);
+        Assert.Equal(ComplexPayloadFingerprint(original), ComplexPayloadFingerprint(copy));
+    }
+
+    [Fact]
+    public void ComplexPayloadUnion_AsEnvelopeField_RoundTrip()
+    {
+        var s = BuildSerializer();
+        var original = new ComplexPayloadEnvelope(
+            "envelope-1",
+            new ComplexPayloadUnion(new ComplexFrameResultCase(
+                new ComplexResult<ComplexFrame>(
+                    ComplexOutcome.Succeeded,
+                    CreateComplexFrame(),
+                    [new ComplexDiagnostic("result", "frame accepted")]))));
+
+        var copy = s.Deserialize<ComplexPayloadEnvelope>(s.SerializeToArray(original));
+
+        Assert.Equal("envelope-1", copy.EnvelopeId);
+        Assert.Equal(
+            ComplexPayloadFingerprint(original.Payload),
+            ComplexPayloadFingerprint(copy.Payload));
+    }
+
+    public static TheoryData<ComplexPayloadUnion> ComplexPayloadCases()
+    {
+        var frame = CreateComplexFrame();
+        var snapshot = CreateComplexTaskSnapshot();
+
+        return new TheoryData<ComplexPayloadUnion>
+        {
+            new(new ComplexFrameCase(frame)),
+            new(new ComplexFrameResultCase(
+                new ComplexResult<ComplexFrame>(
+                    ComplexOutcome.Succeeded,
+                    frame,
+                    [new ComplexDiagnostic("frame-result", "frame completed")]))),
+            new(new ComplexTaskSnapshotCase(snapshot)),
+            new(new ComplexTaskSnapshotResultCase(
+                new ComplexResult<ComplexTaskSnapshot>(
+                    ComplexOutcome.Succeeded,
+                    snapshot,
+                    [new ComplexDiagnostic("task-result", "task completed")]))),
+        };
+    }
+
+    private static ComplexFrame CreateComplexFrame()
+    {
+        var observedAt = new DateTimeOffset(2026, 5, 16, 8, 30, 0, TimeSpan.Zero);
+
+        return new ComplexFrame(
+            new Guid("11111111-2222-3333-4444-555555555555"),
+            observedAt,
+            new Dictionary<string, ComplexObserved<double>>
+            {
+                ["X"] = new(12.5, observedAt, new ComplexDiagnostic("x-pos", "x axis observed")),
+                ["Y"] = new(-3.25, observedAt.AddMilliseconds(10), null),
+            },
+            new Dictionary<string, ComplexAxisSnapshot>
+            {
+                ["X"] = new("X", 12.5, new ComplexDiagnostic("x-axis", "x axis ready")),
+                ["Y"] = new("Y", -3.25, null),
+            },
+            ComplexFrameQuality.Degraded,
+            ComplexFrameConsistency.Partial,
+            [
+                new ComplexDiagnostic("frame", "frame contains partial data"),
+                new ComplexDiagnostic("quality", "quality degraded"),
+            ]);
+    }
+
+    private static ComplexTaskSnapshot CreateComplexTaskSnapshot()
+    {
+        var observedAt = new DateTimeOffset(2026, 5, 16, 8, 31, 0, TimeSpan.Zero);
+
+        return new ComplexTaskSnapshot(
+            new ComplexHandle(new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), "jog-x"),
+            ComplexMotionKind.Jog,
+            new ComplexObserved<string>(
+                "Running",
+                observedAt,
+                new ComplexDiagnostic("state", "task is active")),
+            null,
+            [
+                new ComplexDiagnostic("task", "snapshot captured"),
+                new ComplexDiagnostic("motion", "jog command active"),
+            ]);
+    }
+
+    private static string ComplexPayloadFingerprint(ComplexPayloadUnion value) =>
+        value.Value switch
+        {
+            ComplexFrameCase c => "frame:" + ComplexFrameFingerprint(c.Frame),
+            ComplexFrameResultCase c => "frame-result:" + ComplexResultFingerprint(c.Result, ComplexFrameFingerprint),
+            ComplexTaskSnapshotCase c => "task:" + ComplexTaskSnapshotFingerprint(c.Snapshot),
+            ComplexTaskSnapshotResultCase c => "task-result:" + ComplexResultFingerprint(c.Result, ComplexTaskSnapshotFingerprint),
+            null => "<null>",
+            _ => throw new InvalidOperationException("Unexpected complex payload case."),
+        };
+
+    private static string ComplexResultFingerprint<T>(
+        ComplexResult<T> result,
+        Func<T, string> valueFingerprint)
+        where T : class =>
+        string.Join("|", new[]
+        {
+            result.Outcome.ToString(),
+            result.Value is null ? "<null>" : valueFingerprint(result.Value),
+            ComplexDiagnosticsFingerprint(result.Diagnostics),
+        });
+
+    private static string ComplexFrameFingerprint(ComplexFrame frame) =>
+        string.Join("|", new[]
+        {
+            frame.FrameId.ToString("D"),
+            frame.CapturedAtUtc.ToString("O"),
+            frame.Quality.ToString(),
+            frame.Consistency.ToString(),
+            string.Join(",", frame.Positions.OrderBy(x => x.Key)
+                .Select(x => $"{x.Key}:{x.Value.Value}:{x.Value.ObservedAtUtc:O}:{ComplexDiagnosticFingerprint(x.Value.Diagnostic)}")),
+            string.Join(",", frame.Axes.OrderBy(x => x.Key)
+                .Select(x => $"{x.Key}:{x.Value.AxisName}:{x.Value.Position}:{ComplexDiagnosticFingerprint(x.Value.Diagnostic)}")),
+            ComplexDiagnosticsFingerprint(frame.Diagnostics),
+        });
+
+    private static string ComplexTaskSnapshotFingerprint(ComplexTaskSnapshot snapshot) =>
+        string.Join("|", new[]
+        {
+            snapshot.Handle.Id.ToString("D"),
+            snapshot.Handle.Name,
+            snapshot.Kind.ToString(),
+            snapshot.State.Value,
+            snapshot.State.ObservedAtUtc.ToString("O"),
+            ComplexDiagnosticFingerprint(snapshot.State.Diagnostic),
+            ComplexDiagnosticFingerprint(snapshot.LastDiagnostic),
+            ComplexDiagnosticsFingerprint(snapshot.Diagnostics),
+        });
+
+    private static string ComplexDiagnosticsFingerprint(IEnumerable<ComplexDiagnostic> diagnostics) =>
+        string.Join(",", diagnostics.Select(ComplexDiagnosticFingerprint));
+
+    private static string ComplexDiagnosticFingerprint(ComplexDiagnostic? diagnostic) =>
+        diagnostic is null ? "<null>" : $"{diagnostic.Code}:{diagnostic.Message}";
 
     private static string LocateGeneratedRoot()
     {

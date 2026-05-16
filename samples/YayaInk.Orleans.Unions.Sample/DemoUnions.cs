@@ -153,3 +153,114 @@ public union Triple<T1, T2, T3>(One<T1>, Two<T2>, Three<T3>);
 public union ConstrainedEither<TLeft, TRight>(Left<TLeft>, Right<TRight>)
     where TLeft : notnull
     where TRight : notnull;
+
+// ============================================================
+// Complex nested payloads.
+//
+// These sample types intentionally resemble an application message model:
+// a union case wraps a record class, which then owns dictionaries, lists,
+// nested generic result values, nullable diagnostics, and enum fields.
+// This shape caught a reference-tracking mismatch in the generated union
+// codec: reader and writer must both mark the union value field in Orleans'
+// session, otherwise later reference ids drift and unrelated fields can be
+// read as the wrong type.
+// ============================================================
+
+public enum ComplexOutcome
+{
+    Succeeded,
+    Failed,
+}
+
+public enum ComplexFrameQuality
+{
+    Good,
+    Degraded,
+}
+
+public enum ComplexFrameConsistency
+{
+    Consistent,
+    Partial,
+}
+
+public enum ComplexMotionKind
+{
+    Jog,
+    Home,
+}
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexDiagnostic(
+    [property: global::Orleans.Id(0)] string Code,
+    [property: global::Orleans.Id(1)] string Message);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexResult<T>(
+    [property: global::Orleans.Id(0)] ComplexOutcome Outcome,
+    [property: global::Orleans.Id(1)] T? Value,
+    [property: global::Orleans.Id(2)] List<ComplexDiagnostic> Diagnostics);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexObserved<T>(
+    [property: global::Orleans.Id(0)] T Value,
+    [property: global::Orleans.Id(1)] DateTimeOffset ObservedAtUtc,
+    [property: global::Orleans.Id(2)] ComplexDiagnostic? Diagnostic);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexAxisSnapshot(
+    [property: global::Orleans.Id(0)] string AxisName,
+    [property: global::Orleans.Id(1)] double Position,
+    [property: global::Orleans.Id(2)] ComplexDiagnostic? Diagnostic);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexFrame(
+    [property: global::Orleans.Id(0)] Guid FrameId,
+    [property: global::Orleans.Id(1)] DateTimeOffset CapturedAtUtc,
+    [property: global::Orleans.Id(2)] Dictionary<string, ComplexObserved<double>> Positions,
+    [property: global::Orleans.Id(3)] Dictionary<string, ComplexAxisSnapshot> Axes,
+    [property: global::Orleans.Id(4)] ComplexFrameQuality Quality,
+    [property: global::Orleans.Id(5)] ComplexFrameConsistency Consistency,
+    [property: global::Orleans.Id(6)] List<ComplexDiagnostic> Diagnostics);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexHandle(
+    [property: global::Orleans.Id(0)] Guid Id,
+    [property: global::Orleans.Id(1)] string Name);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexTaskSnapshot(
+    [property: global::Orleans.Id(0)] ComplexHandle Handle,
+    [property: global::Orleans.Id(1)] ComplexMotionKind Kind,
+    [property: global::Orleans.Id(2)] ComplexObserved<string> State,
+    [property: global::Orleans.Id(3)] ComplexDiagnostic? LastDiagnostic,
+    [property: global::Orleans.Id(4)] List<ComplexDiagnostic> Diagnostics);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexFrameCase(
+    [property: global::Orleans.Id(0)] ComplexFrame Frame);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexFrameResultCase(
+    [property: global::Orleans.Id(0)] ComplexResult<ComplexFrame> Result);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexTaskSnapshotCase(
+    [property: global::Orleans.Id(0)] ComplexTaskSnapshot Snapshot);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexTaskSnapshotResultCase(
+    [property: global::Orleans.Id(0)] ComplexResult<ComplexTaskSnapshot> Result);
+
+[Union]
+[GenerateUnionSerializer]
+public union ComplexPayloadUnion(
+    ComplexFrameCase,
+    ComplexFrameResultCase,
+    ComplexTaskSnapshotCase,
+    ComplexTaskSnapshotResultCase);
+
+[global::Orleans.GenerateSerializer]
+public sealed record ComplexPayloadEnvelope(
+    [property: global::Orleans.Id(0)] string EnvelopeId,
+    [property: global::Orleans.Id(1)] ComplexPayloadUnion Payload);

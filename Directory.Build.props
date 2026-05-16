@@ -23,7 +23,7 @@
 	<IncludeSymbols>true</IncludeSymbols>
 	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
-	<Version>0.1.0-preview.1</Version>
+	<Version>0.1.0-preview.2</Version>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(IsPackable)' == 'true' ">
