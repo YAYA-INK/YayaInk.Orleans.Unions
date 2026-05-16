@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YayaInk.Orleans.Unions</title>
+  <meta name="description" content="Zero-boilerplate Microsoft Orleans serialization support for C# union types, powered by a Roslyn source generator.">
+  <link rel="canonical" href="https://yaya-ink.github.io/YayaInk.Orleans.Unions/">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #ffffff;
+      --text: #171717;
+      --muted: #555555;
+      --border: #d8d8d8;
+      --code: #f4f4f4;
+      --link: #0645ad;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #111111;
+        --text: #eeeeee;
+        --muted: #b5b5b5;
+        --border: #444444;
+        --code: #1c1c1c;
+        --link: #8ab4f8;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(760px, calc(100% - 32px));
+      margin: 64px auto;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 7vw, 3.75rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 40px 0 12px;
+      font-size: 1.1rem;
+      line-height: 1.3;
+    }
+
+    p {
+      margin: 0 0 16px;
+    }
+
+    a {
+      color: var(--link);
+    }
+
+    .summary {
+      margin-bottom: 24px;
+      color: var(--muted);
+      font-size: 1.15rem;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      margin: 24px 0 36px;
+      padding: 0;
+      list-style: none;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 12px 0 0;
+      padding: 16px;
+      border: 1px solid var(--border);
+      background: var(--code);
+      border-radius: 6px;
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>YayaInk.Orleans.Unions</h1>
+    <p class="summary">Zero-boilerplate Microsoft Orleans serialization support for C# union types, powered by a Roslyn source generator.</p>
+
+    <ul class="links" aria-label="Project links">
+      <li><a href="https://github.com/YAYA-INK/YayaInk.Orleans.Unions">GitHub</a></li>
+      <li><a href="https://www.nuget.org/packages/YayaInk.Orleans.Unions">NuGet runtime</a></li>
+      <li><a href="https://www.nuget.org/packages/YayaInk.Orleans.Unions.Generators">NuGet generator</a></li>
+      <li><a href="https://github.com/YAYA-INK/YayaInk.Orleans.Unions/blob/main/README.md">README</a></li>
+    </ul>
+
+    <h2>Install</h2>
+    <pre><code>dotnet add package YayaInk.Orleans.Unions --version 0.1.0-preview.1
+dotnet add package YayaInk.Orleans.Unions.Generators --version 0.1.0-preview.1</code></pre>
+
+    <h2>Usage</h2>
+    <pre><code>using YayaInk.Orleans.Unions;
+
+[Union]
+[GenerateUnionSerializer]
+public union Result&lt;T&gt;(Ok&lt;T&gt;, Err);
+
+[GenerateSerializer]
+public sealed record Ok&lt;T&gt;([property: Id(0)] T Value);
+
+[GenerateSerializer]
+public sealed record Err([property: Id(0)] string Message);</code></pre>
+
+    <h2>About</h2>
+    <p>YayaInk.Orleans.Unions emits Orleans <code>IFieldCodec&lt;T&gt;</code>, <code>IDeepCopier&lt;T&gt;</code>, and serializer manifest registration code for preview C# union declarations marked with <code>[GenerateUnionSerializer]</code>.</p>
+    <p>The packages target projects using Microsoft Orleans, C# preview features, and union declarations that need to round-trip through Orleans serialization.</p>
+
+    <footer>
+      <p>MIT licensed. Maintained by YAYA-INK.</p>
+    </footer>
+  </main>
+</body>
+</html>
