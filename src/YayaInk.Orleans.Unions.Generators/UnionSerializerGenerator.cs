@@ -95,7 +95,7 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.Append("namespace ").Append(GeneratedNamespace).AppendLine(";");
         sb.AppendLine();
-        sb.AppendLine("public sealed class UnionMetadataProvider : global::Orleans.Serialization.Configuration.TypeManifestProviderBase");
+        sb.AppendLine("internal sealed class UnionMetadataProvider : global::Orleans.Serialization.Configuration.TypeManifestProviderBase");
         sb.AppendLine("{");
         sb.AppendLine("    protected override void ConfigureInner(global::Orleans.Serialization.Configuration.TypeManifestOptions config)");
         sb.AppendLine("    {");

@@ -23,8 +23,8 @@
 	<IncludeSymbols>true</IncludeSymbols>
 	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
-	<Version>0.1.0-preview.2</Version>
-  </PropertyGroup>
+	<Version>0.1.0-preview.3</Version>
+	</PropertyGroup>
 
   <ItemGroup Condition=" '$(IsPackable)' == 'true' ">
 	<None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
