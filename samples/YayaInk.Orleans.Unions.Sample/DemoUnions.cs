@@ -264,3 +264,51 @@ public union ComplexPayloadUnion(
 public sealed record ComplexPayloadEnvelope(
     [property: global::Orleans.Id(0)] string EnvelopeId,
     [property: global::Orleans.Id(1)] ComplexPayloadUnion Payload);
+
+// ============================================================
+// Nested unions with identical short names.
+//
+// C# distinguishes these as TrackResource.Pose and GripperResource.Pose,
+// but the generator must also include the containing type chain when naming
+// helper codecs/copiers. Otherwise both helpers collapse to PoseOrleansCodec
+// in this namespace.
+// ============================================================
+
+public sealed partial class TrackResource
+{
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct AtHome();
+
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct AtTransfer();
+
+    [Union]
+    [GenerateUnionSerializer]
+    public union Pose(AtHome, AtTransfer);
+}
+
+public sealed partial class GripperResource
+{
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct AtHome();
+
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct AtReceive();
+
+    [Union]
+    [GenerateUnionSerializer]
+    public union Pose(AtHome, AtReceive);
+}
+
+public sealed partial class GenericResource<T>
+{
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct Holding([property: global::Orleans.Id(0)] T Value);
+
+    [global::Orleans.GenerateSerializer]
+    public readonly record struct Empty();
+
+    [Union]
+    [GenerateUnionSerializer]
+    public union Pose(Holding, Empty);
+}

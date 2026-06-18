@@ -105,8 +105,8 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
             var openArity = m.TypeParameters.Count == 0
                 ? string.Empty
                 : "<" + new string(',', m.TypeParameters.Count - 1) + ">";
-            var codecFq = "global::" + ns + m.TypeName + "OrleansCodec" + openArity;
-            var copierFq = "global::" + ns + m.TypeName + "OrleansCopier" + openArity;
+            var codecFq = "global::" + ns + m.GeneratedTypeName + "OrleansCodec" + openArity;
+            var copierFq = "global::" + ns + m.GeneratedTypeName + "OrleansCopier" + openArity;
             sb.Append("        config.Serializers.Add(typeof(").Append(codecFq).AppendLine("));");
             sb.Append("        config.Copiers.Add(typeof(").Append(copierFq).AppendLine("));");
         }
@@ -124,11 +124,13 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
         var location = type.Locations.FirstOrDefault() ?? Location.None;
         var canEmit = true;
 
-        var typeParameters = type.TypeParameters
+        var allTypeParameters = AllTypeParameters(type).ToList();
+
+        var typeParameters = allTypeParameters
             .Select(tp => tp.Name)
             .ToList();
 
-        var typeParameterConstraints = type.TypeParameters
+        var typeParameterConstraints = allTypeParameters
             .Select(BuildConstraintClause)
             .Where(s => s.Length > 0)
             .ToList();
@@ -158,12 +160,58 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
                 ? null
                 : type.ContainingNamespace.ToDisplayString(),
             typeName: type.Name,
+            generatedTypeName: BuildGeneratedTypeName(type),
+            generatedHintTypeName: BuildGeneratedHintTypeName(type),
             typeParameters: typeParameters,
             typeParameterConstraints: typeParameterConstraints,
             unionFullyQualified: type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             cases: cases,
             canEmit: canEmit,
             diagnostics: diagnostics);
+    }
+
+    private static IEnumerable<ITypeParameterSymbol> AllTypeParameters(INamedTypeSymbol type)
+    {
+        var stack = new Stack<INamedTypeSymbol>();
+        for (var current = type; current is not null; current = current.ContainingType)
+            stack.Push(current);
+
+        while (stack.Count > 0)
+        {
+            foreach (var typeParameter in stack.Pop().TypeParameters)
+                yield return typeParameter;
+        }
+    }
+
+    private static string BuildGeneratedTypeName(INamedTypeSymbol type)
+    {
+        var parts = new Stack<string>();
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            var name = current.Name;
+
+            if (!SymbolEqualityComparer.Default.Equals(current, type) && current.TypeParameters.Length > 0)
+                name += "_" + current.TypeParameters.Length;
+
+            parts.Push(name);
+        }
+
+        return string.Join("_", parts);
+    }
+
+    private static string BuildGeneratedHintTypeName(INamedTypeSymbol type)
+    {
+        var parts = new Stack<string>();
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            var name = current.Name;
+            if (current.TypeParameters.Length > 0)
+                name += "_" + current.TypeParameters.Length;
+
+            parts.Push(name);
+        }
+
+        return string.Join("_", parts);
     }
 
     private static string BuildConstraintClause(ITypeParameterSymbol tp)
@@ -207,10 +255,10 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
         var tparamList = m.TypeParameters.Count == 0
             ? string.Empty
             : "<" + string.Join(", ", m.TypeParameters) + ">";
-        var codecName = m.TypeName + "OrleansCodec" + tparamList;
-        var copierName = m.TypeName + "OrleansCopier" + tparamList;
-        var codecCtorName = m.TypeName + "OrleansCodec";
-        var copierCtorName = m.TypeName + "OrleansCopier";
+        var codecName = m.GeneratedTypeName + "OrleansCodec" + tparamList;
+        var copierName = m.GeneratedTypeName + "OrleansCopier" + tparamList;
+        var codecCtorName = m.GeneratedTypeName + "OrleansCodec";
+        var copierCtorName = m.GeneratedTypeName + "OrleansCopier";
         var constraints = m.TypeParameterConstraints.Count == 0
             ? string.Empty
             : " " + string.Join(" ", m.TypeParameterConstraints);
@@ -354,8 +402,7 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
         sb.AppendLine("}");
 
         var hint = (m.Namespace is null ? string.Empty : m.Namespace + ".")
-                   + m.TypeName
-                   + (m.TypeParameters.Count == 0 ? string.Empty : "_" + m.TypeParameters.Count)
+                   + m.GeneratedHintTypeName
                    + ".UnionOrleansSerializer.g.cs";
 
         return (hint, sb.ToString());
@@ -365,6 +412,8 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
     {
         public string? Namespace { get; }
         public string TypeName { get; }
+        public string GeneratedTypeName { get; }
+        public string GeneratedHintTypeName { get; }
         public List<string> TypeParameters { get; }
         public List<string> TypeParameterConstraints { get; }
         public string UnionFullyQualified { get; }
@@ -372,13 +421,16 @@ public sealed class UnionSerializerGenerator : IIncrementalGenerator
         public bool CanEmit { get; }
         public List<Diagnostic> Diagnostics { get; }
 
-        public UnionModel(string? ns, string typeName, List<string> typeParameters,
+        public UnionModel(string? ns, string typeName, string generatedTypeName, string generatedHintTypeName,
+            List<string> typeParameters,
             List<string> typeParameterConstraints,
             string unionFullyQualified, List<CaseModel> cases, bool canEmit,
             List<Diagnostic> diagnostics)
         {
             Namespace = ns;
             TypeName = typeName;
+            GeneratedTypeName = generatedTypeName;
+            GeneratedHintTypeName = generatedHintTypeName;
             TypeParameters = typeParameters;
             TypeParameterConstraints = typeParameterConstraints;
             UnionFullyQualified = unionFullyQualified;

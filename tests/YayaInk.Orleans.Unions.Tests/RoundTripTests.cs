@@ -603,6 +603,47 @@ public class RoundTripTests
         Assert.Contains(names, n => n!.Contains("Triple"));
         Assert.Contains(names, n => n!.Contains("ConstrainedEither"));
         Assert.Contains(names, n => n!.Contains("ComplexPayloadUnion"));
+        Assert.Contains(names, n => n!.Contains("TrackResource_Pose"));
+        Assert.Contains(names, n => n!.Contains("GripperResource_Pose"));
+        Assert.Contains(names, n => n!.Contains("GenericResource_1_Pose"));
+    }
+
+    [Fact]
+    public void Nested_Unions_With_Same_Short_Name_RoundTrip()
+    {
+        var s = BuildSerializer();
+
+        var track = new TrackResource.Pose(new TrackResource.AtTransfer());
+        var trackCopy = s.Deserialize<TrackResource.Pose>(s.SerializeToArray(track));
+        Assert.IsType<TrackResource.AtTransfer>(trackCopy.Value);
+
+        var gripper = new GripperResource.Pose(new GripperResource.AtReceive());
+        var gripperCopy = s.Deserialize<GripperResource.Pose>(s.SerializeToArray(gripper));
+        Assert.IsType<GripperResource.AtReceive>(gripperCopy.Value);
+
+        var generic = new GenericResource<string>.Pose(new GenericResource<string>.Holding("payload"));
+        var genericCopy = s.Deserialize<GenericResource<string>.Pose>(s.SerializeToArray(generic));
+        Assert.Equal("payload", ((GenericResource<string>.Holding)genericCopy.Value!).Value);
+    }
+
+    [Fact]
+    public void Nested_Unions_With_Same_Short_Name_DeepCopy()
+    {
+        var services = new ServiceCollection();
+        services.AddSerializer(b => b.AddAssembly(typeof(IdUnion).Assembly));
+        var sp = services.BuildServiceProvider();
+
+        var trackCopier = sp.GetRequiredService<DeepCopier<TrackResource.Pose>>();
+        var track = trackCopier.Copy(new TrackResource.Pose(new TrackResource.AtTransfer()));
+        Assert.IsType<TrackResource.AtTransfer>(track.Value);
+
+        var gripperCopier = sp.GetRequiredService<DeepCopier<GripperResource.Pose>>();
+        var gripper = gripperCopier.Copy(new GripperResource.Pose(new GripperResource.AtReceive()));
+        Assert.IsType<GripperResource.AtReceive>(gripper.Value);
+
+        var genericCopier = sp.GetRequiredService<DeepCopier<GenericResource<string>.Pose>>();
+        var generic = genericCopier.Copy(new GenericResource<string>.Pose(new GenericResource<string>.Holding("payload")));
+        Assert.Equal("payload", ((GenericResource<string>.Holding)generic.Value!).Value);
     }
 
     // ── Multi-generic-parameter unions ────────────────────────
