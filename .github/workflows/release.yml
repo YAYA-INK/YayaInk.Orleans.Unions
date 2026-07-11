@@ -19,8 +19,7 @@ jobs:
       - name: Setup .NET 11 preview
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '11.0.x'
-          dotnet-quality: 'preview'
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore

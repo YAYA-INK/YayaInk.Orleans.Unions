@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-preview.5] - 2026-07-11
+
+### Changed
+- Updated the supported .NET 11 preview baseline to SDK
+  `11.0.100-preview.5.26302.115` and pinned local and CI builds to that SDK.
+- Removed the sample runtime polyfill now that `System.Runtime` supplies
+  `IUnion` and `UnionAttribute`.
+
 ## [0.1.0-preview.4] - 2026-06-19
 
 ### Fixed

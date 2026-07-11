@@ -27,8 +27,8 @@ Install both into the project that declares your union types:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="YayaInk.Orleans.Unions" Version="0.1.0-preview.1" />
-  <PackageReference Include="YayaInk.Orleans.Unions.Generators" Version="0.1.0-preview.1"
+  <PackageReference Include="YayaInk.Orleans.Unions" Version="0.1.0-preview.5" />
+  <PackageReference Include="YayaInk.Orleans.Unions.Generators" Version="0.1.0-preview.5"
                     PrivateAssets="all" />
 </ItemGroup>
 ```
@@ -101,11 +101,10 @@ compiler change.
 
 - The C# `union` keyword is a **preview** language feature; you must enable
   `LangVersion=preview` and `EnablePreviewFeatures=true` in your project.
-- This package does **not** ship a polyfill for
-  `System.Runtime.CompilerServices.IUnion` / `UnionAttribute`. Until the BCL
-  ships them, your project (or another package you already depend on) needs to
-  provide these types. The `samples/` project demonstrates a minimal local
-  polyfill.
+- The package currently requires .NET SDK `11.0.100-preview.5.26302.115`.
+  This SDK supplies `System.Runtime.CompilerServices.IUnion` and
+  `UnionAttribute`; consumers must not define or reference a polyfill for
+  these runtime types.
 - Custom (handwritten) union layouts are out of scope; only the
   compiler-generated default form is supported.
 
